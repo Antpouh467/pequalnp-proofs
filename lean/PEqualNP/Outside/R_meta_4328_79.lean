@@ -3,12 +3,20 @@ import PEqualNP.Defs
 
 open PEqualNP.CircuitLowerBounds PEqualNP.MetaComplexity
 
--- Reduce L-meta-4328 by a normal form. normalN1: a circuit as in the step can be replaced,
--- without growing, by one that still accepts every edge pair, rejects every singleton, and
--- whose every AND gate fires only on inputs holding an edge (N1). orBound: such an N1
--- circuit has at least 104 = |E| - 1 OR gates. The proof below shows (Claim A) that an N1
--- circuit has at least 21 AND gates (21 = vertex cover number of PG(2,4)), so it has at
--- least 125 gates, against size <= 124.
+-- Reduction of L-meta-4328 to two open hypotheses.
+-- normalN1: a circuit of size at most 124 as in the gap can be replaced by one of no larger
+--   size that accepts every edge pair, rejects every singleton, and in which every AND gate
+--   is 1 only on inputs that contain an edge.
+-- orBound: such a circuit has at least 104 OR gates, that is the edge count minus one.
+-- Checked in this file: such a circuit has at least 21 AND gates, the vertex cover number
+--   of the PG(2,4) incidence graph; with orBound the size is at least 125.
+-- Evidence from exhaustive optimal and optimal plus one circuits for C6, K13, P4, P5, P6,
+--   S22 and a spider graph: the orBound analogue had 0 failures in 11 corpora, minimum
+--   slack 0, so the bound is tight; every corpus graph has an optimal circuit of this form.
+-- Known false on these corpora: a single gate deletion or replacement always normalises;
+--   the number of tops of AND chains is at least the cover number; the pairwise core of the
+--   block lemma for three or more leaves; the block lemma with one common label per side;
+--   greedy charging schemes for the OR count.
 set_option maxRecDepth 32768 in
 set_option maxHeartbeats 40000000 in
 theorem PEqualNP.Outside.R_meta_4328_79
@@ -32,7 +40,7 @@ theorem PEqualNP.Outside.R_meta_4328_79
     induction gs with
     | nil => intro w; simp
     | cons g gs ih => intro w; simp only [List.foldl_cons]; rw [ih]; simp; omega
-  have AF_fold_prefix : ∀ (gs : List Gate), ∀ (w : List Bool) (i : ℕ), i < w.length → (gs.foldl (fun w g => w ++ [g.op.eval (g.inputs.map fun i => w.getD i false)]) w).getD i false = w.getD i false := by
+  have AF_fold_head : ∀ (gs : List Gate), ∀ (w : List Bool) (i : ℕ), i < w.length → (gs.foldl (fun w g => w ++ [g.op.eval (g.inputs.map fun i => w.getD i false)]) w).getD i false = w.getD i false := by
     clear normalN1 orBound AF_fold_len
     intro gs
     induction gs with
@@ -51,14 +59,13 @@ theorem PEqualNP.Outside.R_meta_4328_79
       intro wx wy wz hxy hzx hz hops hand
       simp only [List.foldl_cons]
       have hg := hops g (List.mem_cons_self ..)
-      -- value of the new gate on z is the or of the values on x and y
       have hnew : g.op.eval (g.inputs.map fun i => wz.getD i false)
           = (g.op.eval (g.inputs.map fun i => wx.getD i false)
             || g.op.eval (g.inputs.map fun i => wy.getD i false)) := by
         rcases hg with hg | hg
         · have h0 := hand 0 g rfl hg
           simp only [List.foldl_cons, Nat.add_zero] at h0
-          rw [AF_fold_prefix gs _ _ (by simp)] at h0
+          rw [AF_fold_head gs _ _ (by simp)] at h0
           rw [List.getD_append_right _ _ _ _ (le_refl _)] at h0
           simp only [Nat.sub_self, List.getD_cons_zero] at h0
           rw [h0]
@@ -110,7 +117,7 @@ theorem PEqualNP.Outside.R_meta_4328_79
           simp; omega] at this
         exact this
   have AF_A1 : ∀ (C : PEqualNP.CircuitLowerBounds.Circuit) (x y : List Bool), (∀ g ∈ C.gates, g.op = PEqualNP.CircuitLowerBounds.GateOp.and ∨ g.op = PEqualNP.CircuitLowerBounds.GateOp.or) → x.length = y.length → (∀ (j : ℕ) (g : PEqualNP.CircuitLowerBounds.Gate), C.gates[j]? = some g → g.op = PEqualNP.CircuitLowerBounds.GateOp.and → (C.wires (List.zipWith (fun a b => a || b) x y)).getD (x.length + j) false = false) → ∀ i : ℕ, (C.wires (List.zipWith (fun a b => a || b) x y)).getD i false = ((C.wires x).getD i false || (C.wires y).getD i false) := by
-    clear normalN1 orBound AF_fold_len AF_fold_prefix
+    clear normalN1 orBound AF_fold_len AF_fold_head
     intro C x y hops hlen hand i
     have hz : ∀ i, (List.zipWith (fun a b => a || b) x y).getD i false = (x.getD i false || y.getD i false) := by
       intro i
@@ -130,7 +137,7 @@ theorem PEqualNP.Outside.R_meta_4328_79
     exact AF_fold_or C.gates x y _ hlen hzl hz hops (by
       intro j g hj hop; rw [hzl]; exact hand j g hj hop) i
   have AF_fold_mono : ∀ (gs : List Gate), ∀ (wx wy : List Bool), wx.length = wy.length → (∀ i, wx.getD i false = true → wy.getD i false = true) → (∀ g ∈ gs, g.op = GateOp.and ∨ g.op = GateOp.or) → ∀ i, (gs.foldl (fun w g => w ++ [g.op.eval (g.inputs.map fun i => w.getD i false)]) wx).getD i false = true → (gs.foldl (fun w g => w ++ [g.op.eval (g.inputs.map fun i => w.getD i false)]) wy).getD i false = true := by
-    clear normalN1 orBound AF_fold_len AF_fold_prefix AF_fold_or AF_A1
+    clear normalN1 orBound AF_fold_len AF_fold_head AF_fold_or AF_A1
     intro gs
     induction gs with
     | nil => intro wx wy _ h _ i; simpa using h i
@@ -166,11 +173,11 @@ theorem PEqualNP.Outside.R_meta_4328_79
             simp at hi
       · intro g' hg'; exact hops g' (List.mem_cons_of_mem _ hg')
   have AF_A0 : ∀ (C : PEqualNP.CircuitLowerBounds.Circuit) (x y : List Bool), (∀ g ∈ C.gates, g.op = PEqualNP.CircuitLowerBounds.GateOp.and ∨ g.op = PEqualNP.CircuitLowerBounds.GateOp.or) → x.length = y.length → (∀ i : ℕ, x.getD i false = true → y.getD i false = true) → ∀ i : ℕ, (C.wires x).getD i false = true → (C.wires y).getD i false = true := by
-    clear normalN1 orBound AF_fold_len AF_fold_prefix AF_fold_or AF_A1
+    clear normalN1 orBound AF_fold_len AF_fold_head AF_fold_or AF_A1
     intro C x y hops hlen hle i hi
     exact AF_fold_mono C.gates x y hlen hle hops i hi
   have AF_A4 : let E := fun (u v : Fin 42) => u.val < 21 ∧ 21 ≤ v.val ∧ (v.val + 21 - u.val) % 21 ∈ ([0, 5, 7, 17, 20] : List ℕ); ∀ u u2 w w2 : Fin 42, E u w → E u w2 → E u2 w → E u2 w2 → u = u2 ∨ w = w2 := by
-    clear normalN1 orBound AF_fold_len AF_fold_prefix AF_fold_or AF_A1 AF_fold_mono AF_A0
+    clear normalN1 orBound AF_fold_len AF_fold_head AF_fold_or AF_A1 AF_fold_mono AF_A0
     dsimp only
     intro u u2 w w2 h1 h2 h3 h4
     obtain ⟨hu, hw, h1⟩ := h1
@@ -184,7 +191,7 @@ theorem PEqualNP.Outside.R_meta_4328_79
     rcases h1 with h1 | h1 | h1 | h1 | h1 <;> rcases h2 with h2 | h2 | h2 | h2 | h2 <;>
       rcases h3 with h3 | h3 | h3 | h3 | h3 <;> rcases h4 with h4 | h4 | h4 | h4 | h4 <;> omega
   have AF_B1b : let E := fun (u v : Fin 42) => u.val < 21 ∧ 21 ≤ v.val ∧ (v.val + 21 - u.val) % 21 ∈ ([0, 5, 7, 17, 20] : List ℕ); ∀ (c c2 : Fin 42) (L : Finset (Fin 42)), c ≠ c2 → 2 ≤ L.card → (∀ v ∈ L, E c v ∨ E v c) → (∀ v ∈ L, E c2 v ∨ E v c2) → False := by
-    clear normalN1 orBound AF_fold_len AF_fold_prefix AF_fold_or AF_A1 AF_fold_mono AF_A0
+    clear normalN1 orBound AF_fold_len AF_fold_head AF_fold_or AF_A1 AF_fold_mono AF_A0
     intro E c c2 L hne hcard h1 h2
     obtain ⟨v, hv, v2, hv2, hvv⟩ := Finset.one_lt_card.1 (by omega : 1 < L.card)
     have H := AF_A4
@@ -215,7 +222,7 @@ theorem PEqualNP.Outside.R_meta_4328_79
       · exact absurd h hvv
       · exact absurd h hne
   have AF_A5 : let E := fun (u v : Fin 42) => u.val < 21 ∧ 21 ≤ v.val ∧ (v.val + 21 - u.val) % 21 ∈ ([0, 5, 7, 17, 20] : List ℕ); ∀ S : Finset (Fin 42), (∀ u v : Fin 42, E u v → u ∈ S ∨ v ∈ S) → 21 ≤ S.card := by
-    clear normalN1 orBound AF_fold_len AF_fold_prefix AF_fold_or AF_A1 AF_fold_mono AF_A0 AF_A4 AF_B1b
+    clear normalN1 orBound AF_fold_len AF_fold_head AF_fold_or AF_A1 AF_fold_mono AF_A0 AF_A4 AF_B1b
     dsimp only
     intro S hS
     have h_main : 21 ≤ S.card := by
@@ -224,14 +231,14 @@ theorem PEqualNP.Outside.R_meta_4328_79
         intro i
         have h₂ : (⟨i.val, by omega⟩ : Fin 42).val < 21 ∧ 21 ≤ (⟨i.val + 21, by omega⟩ : Fin 42).val ∧ ((⟨i.val + 21, by omega⟩ : Fin 42).val + 21 - (⟨i.val, by omega⟩ : Fin 42).val) % 21 ∈ ([0, 5, 7, 17, 20] : List ℕ) := by
           constructor
-          · -- Prove u.val < 21
+          ·
             simp [Fin.val_mk]
             <;> omega
           constructor
-          · -- Prove 21 ≤ v.val
+          ·
             simp [Fin.val_mk]
             <;> omega
-          · -- Prove (v.val + 21 - u.val) % 21 ∈ [0, 5, 7, 17, 20]
+          ·
             simp [Fin.val_mk, List.mem_cons, List.mem_nil_iff]
             <;> norm_num <;> omega
         have h₃ : (⟨i.val, by omega⟩ : Fin 42) ∈ S ∨ (⟨i.val + 21, by omega⟩ : Fin 42) ∈ S := hS (⟨i.val, by omega⟩ : Fin 42) (⟨i.val + 21, by omega⟩ : Fin 42) h₂
@@ -242,9 +249,9 @@ theorem PEqualNP.Outside.R_meta_4328_79
       have h₂ : ∀ (i : Fin 21), f i ∈ S := by
         intro i
         by_cases h : (⟨i.val, by omega⟩ : Fin 42) ∈ S
-        · -- Case: u_i ∈ S
+        ·
           simp [f, h]
-        · -- Case: u_i ∉ S
+        ·
           have h₃ : (⟨i.val, by omega⟩ : Fin 42) ∈ S ∨ (⟨i.val + 21, by omega⟩ : Fin 42) ∈ S := h₁ i
           cases h₃ with
           | inl h₃ =>
@@ -282,7 +289,7 @@ theorem PEqualNP.Outside.R_meta_4328_79
 
     exact h_main
   have AF_A6 : let E := fun (u v : Fin 42) => u.val < 21 ∧ 21 ≤ v.val ∧ (v.val + 21 - u.val) % 21 ∈ ([0, 5, 7, 17, 20] : List ℕ); ∀ (G : Finset ℕ) (c : ℕ → Fin 42), (∀ u v : Fin 42, E u v → ∃ g ∈ G, c g = u ∨ c g = v) → 21 ≤ G.card := by
-    clear normalN1 orBound AF_fold_len AF_fold_prefix AF_fold_or AF_A1 AF_fold_mono AF_A0 AF_A4 AF_B1b
+    clear normalN1 orBound AF_fold_len AF_fold_head AF_fold_or AF_A1 AF_fold_mono AF_A0 AF_A4 AF_B1b
     intro E G c h
     have hcov : ∀ u v : Fin 42, E u v → u ∈ G.image c ∨ v ∈ G.image c := by
       intro u v huv
@@ -291,16 +298,16 @@ theorem PEqualNP.Outside.R_meta_4328_79
       · exact Or.inl (Finset.mem_image.2 ⟨g, hg, hc⟩)
       · exact Or.inr (Finset.mem_image.2 ⟨g, hg, hc⟩)
     exact le_trans (AF_A5 (G.image c) hcov) Finset.card_image_le
-  have AF_take_prefix : ∀ (C : Circuit) (x : List Bool) (j i : ℕ) (hj : j ≤ C.gates.length) (hi : i < x.length + j), (C.wires x).getD i false = ((C.gates.take j).foldl (fun w g => w ++ [g.op.eval (g.inputs.map fun i => w.getD i false)]) x).getD i false := by
+  have AF_take_head : ∀ (C : Circuit) (x : List Bool) (j i : ℕ) (hj : j ≤ C.gates.length) (hi : i < x.length + j), (C.wires x).getD i false = ((C.gates.take j).foldl (fun w g => w ++ [g.op.eval (g.inputs.map fun i => w.getD i false)]) x).getD i false := by
     clear normalN1 orBound AF_fold_or AF_A1 AF_fold_mono AF_A0 AF_A4 AF_B1b AF_A5 AF_A6
     intro C x j i hj hi
     unfold Circuit.wires
     conv_lhs => rw [← List.take_append_drop j C.gates]
     rw [List.foldl_append]
-    apply AF_fold_prefix
+    apply AF_fold_head
     rw [AF_fold_len, List.length_take]; omega
   have AF_gate_val : ∀ (C : Circuit) (x : List Bool) (j : ℕ) (g : Gate) (hg : C.gates[j]? = some g), (C.wires x).getD (x.length + j) false = g.op.eval (g.inputs.map fun i => ((C.gates.take j).foldl (fun w g => w ++ [g.op.eval (g.inputs.map fun i => w.getD i false)]) x).getD i false) := by
-    clear normalN1 orBound AF_fold_or AF_A1 AF_fold_mono AF_A0 AF_A4 AF_B1b AF_A5 AF_A6 AF_take_prefix
+    clear normalN1 orBound AF_fold_or AF_A1 AF_fold_mono AF_A0 AF_A4 AF_B1b AF_A5 AF_A6 AF_take_head
     intro C x j g hg
     rw [List.getElem?_eq_some_iff] at hg
     obtain ⟨hj, hgj⟩ := hg
@@ -316,15 +323,15 @@ theorem PEqualNP.Outside.R_meta_4328_79
       unfold Circuit.wires
       conv_lhs => rw [hsplit]
       rw [List.foldl_append, List.foldl_cons]
-    rw [hw, AF_fold_prefix _ _ _ (by rw [List.length_append, hlen]; simp)]
+    rw [hw, AF_fold_head _ _ _ (by rw [List.length_append, hlen]; simp)]
     rw [List.getD_append_right _ _ _ _ (by rw [hlen]), hlen, Nat.sub_self, List.getD_cons_zero]
   have AF_getD_ofFn : ∀ (f : Fin 42 → Bool) (i : ℕ), (List.ofFn f).getD i false = if h : i < 42 then f ⟨i, h⟩ else false := by
-    clear normalN1 orBound AF_fold_len AF_fold_prefix AF_fold_or AF_A1 AF_fold_mono AF_A0 AF_A4 AF_B1b AF_A5 AF_A6 AF_take_prefix AF_gate_val
+    clear normalN1 orBound AF_fold_len AF_fold_head AF_fold_or AF_A1 AF_fold_mono AF_A0 AF_A4 AF_B1b AF_A5 AF_A6 AF_take_head AF_gate_val
     intro f i
     simp only [List.getD_eq_getElem?_getD, List.getElem?_ofFn]
     split <;> simp_all
   have hAfull : let E := fun (u v : Fin 42) => u.val < 21 ∧ 21 ≤ v.val ∧ (v.val + 21 - u.val) % 21 ∈ ([0, 5, 7, 17, 20] : List ℕ); ∀ (C : PEqualNP.CircuitLowerBounds.Circuit), PEqualNP.MetaComplexity.Monotone2 C → (∀ u v : Fin 42, E u v → C.eval (List.ofFn fun w : Fin 42 => decide (w = u ∨ w = v)) = true) → (∀ u : Fin 42, C.eval (List.ofFn fun w : Fin 42 => decide (w = u)) = false) → (∀ (j : ℕ) (g : PEqualNP.CircuitLowerBounds.Gate), C.gates[j]? = some g → g.op = PEqualNP.CircuitLowerBounds.GateOp.and → ∀ x : Fin 42 → Bool, (C.wires (List.ofFn x)).getD (42 + j) false = true → ∃ u v : Fin 42, E u v ∧ x u = true ∧ x v = true) → ∃ G : Finset ℕ, 21 ≤ G.card ∧ ∀ j ∈ G, ∃ g : PEqualNP.CircuitLowerBounds.Gate, C.gates[j]? = some g ∧ g.op = PEqualNP.CircuitLowerBounds.GateOp.and := by
-    clear normalN1 orBound AF_fold_len AF_fold_prefix AF_fold_or AF_fold_mono AF_A4 AF_A5
+    clear normalN1 orBound AF_fold_len AF_fold_head AF_fold_or AF_fold_mono AF_A4 AF_A5
     intro E C hmono hacc hrej hN1
     classical
     have hops : ∀ g ∈ C.gates, g.op = PEqualNP.CircuitLowerBounds.GateOp.and ∨ g.op = PEqualNP.CircuitLowerBounds.GateOp.or := by
@@ -333,7 +340,6 @@ theorem PEqualNP.Outside.R_meta_4328_79
       simpa using this
     have hEne : ∀ a b : Fin 42, E a b → a ≠ b := by
       intro a b h hab; subst hab; obtain ⟨h1, h2, -⟩ := h; omega
-    -- singletons and pairs
     have hzip : ∀ u v : Fin 42, (List.ofFn fun w : Fin 42 => decide (w = u ∨ w = v)) =
         List.zipWith (fun a b => a || b) (List.ofFn fun w : Fin 42 => decide (w = u)) (List.ofFn fun w : Fin 42 => decide (w = v)) := by
       intro u v
@@ -341,7 +347,6 @@ theorem PEqualNP.Outside.R_meta_4328_79
       · simp
       · intro n h1 h2
         simp [List.getElem_zipWith, Bool.decide_or]
-    -- an AND gate is false on a singleton input
     have hsing : ∀ (j : ℕ) (g : PEqualNP.CircuitLowerBounds.Gate), C.gates[j]? = some g →
         g.op = PEqualNP.CircuitLowerBounds.GateOp.and → ∀ u : Fin 42,
         (C.wires (List.ofFn fun w : Fin 42 => decide (w = u))).getD (42 + j) false = false := by
@@ -350,7 +355,6 @@ theorem PEqualNP.Outside.R_meta_4328_79
       obtain ⟨a, b, hab, ha, hb⟩ := hN1 j g hg hop _ (by simpa only [Bool.not_eq_false] using hne)
       simp only [decide_eq_true_eq] at ha hb
       exact hEne a b hab (ha.trans hb.symm)
-    -- every edge has a firing AND gate
     have hex : ∀ u v : Fin 42, E u v → ∃ j, ∃ g : PEqualNP.CircuitLowerBounds.Gate, C.gates[j]? = some g ∧
         g.op = PEqualNP.CircuitLowerBounds.GateOp.and ∧
         (C.wires (List.ofFn fun w : Fin 42 => decide (w = u ∨ w = v))).getD (42 + j) false = true := by
@@ -368,9 +372,7 @@ theorem PEqualNP.Outside.R_meta_4328_79
       unfold PEqualNP.CircuitLowerBounds.Circuit.eval at h1 h2 h3
       rw [hzip u v, key, h2, h3] at h1
       simp at h1
-    -- first firing gate
     let fj : Fin 42 → Fin 42 → ℕ := fun u v => if h : E u v then Nat.find (hex u v h) else 0
-    -- L-sets with respect to the prefix of length j
     let W : ℕ → List Bool → List Bool := fun j x =>
       (C.gates.take j).foldl (fun w g => w ++ [g.op.eval (g.inputs.map fun i => w.getD i false)]) x
     let Ls : ℕ → ℕ → Finset (Fin 42) := fun j i =>
@@ -384,7 +386,6 @@ theorem PEqualNP.Outside.R_meta_4328_79
       obtain ⟨t, rfl⟩ := Finset.card_eq_one.1 hS
       rw [Finset.mem_singleton] at hs; subst hs
       simp
-    -- the cover property
     have hcov : ∀ u v : Fin 42, E u v → cen (fj u v) = u ∨ cen (fj u v) = v := by
       intro u v huv
       have hfj : fj u v = Nat.find (hex u v huv) := by simp only [fj, dif_pos huv]
@@ -396,13 +397,11 @@ theorem PEqualNP.Outside.R_meta_4328_79
         rcases Nat.lt_or_ge j0 C.gates.length with h | h
         · exact h
         · rw [List.getElem?_eq_none h] at hg0; cases hg0
-      -- gate value formula
       have hval : ∀ x : List Bool, x.length = 42 → (C.wires x).getD (42 + j0) false =
           g0.op.eval (g0.inputs.map fun i => (W j0 x).getD i false) := by
         intro x hx
         have := AF_gate_val C x j0 g0 hg0
         rw [hx] at this; exact this
-      -- OR-linearity below j0
       have hlin : ∀ i, (W j0 (List.ofFn fun w : Fin 42 => decide (w = u ∨ w = v))).getD i false =
           ((W j0 (List.ofFn fun w : Fin 42 => decide (w = u))).getD i false ||
             (W j0 (List.ofFn fun w : Fin 42 => decide (w = v))).getD i false) := by
@@ -419,7 +418,7 @@ theorem PEqualNP.Outside.R_meta_4328_79
             have hnot := hmin j hjlt
             push Not at hnot
             have h2 := hnot g hgj hop
-            have h3 := AF_take_prefix C (List.ofFn fun w : Fin 42 => decide (w = u ∨ w = v)) j0 (42 + j) hj0len.le
+            have h3 := AF_take_head C (List.ofFn fun w : Fin 42 => decide (w = u ∨ w = v)) j0 (42 + j) hj0len.le
               (by rw [List.length_ofFn]; omega)
             have h4 : ((C.gates.take j0).foldl (fun w g => w ++ [g.op.eval (g.inputs.map fun i => w.getD i false)])
                 (List.ofFn fun w : Fin 42 => decide (w = u ∨ w = v))).getD (42 + j) false = false := by
@@ -429,7 +428,6 @@ theorem PEqualNP.Outside.R_meta_4328_79
         rw [← hzip u v] at this
         exact this
       have hlen1 : ∀ x : Fin 42 → Bool, (List.ofFn x).length = 42 := by intro x; simp
-      -- values of the gate
       have vz := hval (List.ofFn fun w : Fin 42 => decide (w = u ∨ w = v)) (hlen1 _)
       rw [hfire, hop0] at vz
       have vu := hval _ (hlen1 (fun w : Fin 42 => decide (w = u)))
@@ -437,7 +435,6 @@ theorem PEqualNP.Outside.R_meta_4328_79
       have vv := hval _ (hlen1 (fun w : Fin 42 => decide (w = v)))
       rw [hsing j0 g0 hg0 hop0 v, hop0] at vv
       have hlen2 : g0.inputs.length ≤ 2 := (hmono g0 (List.mem_of_getElem? hg0)).2
-      -- adjacency of the two L-sets
       have hadj : ∀ a b : ℕ, g0.inputs = [a, b] → ∀ p ∈ Ls j0 a, ∀ q ∈ Ls j0 b, E p q ∨ E q p := by
         intro a b hin p hp q hq
         simp only [Ls, Finset.mem_filter, Finset.mem_univ, true_and] at hp hq
@@ -470,7 +467,6 @@ theorem PEqualNP.Outside.R_meta_4328_79
         · exact Or.inl hab
         · exact Or.inr hab
         · exact absurd rfl hne
-      -- the centre lies on the edge
       have hfin : ∀ a b : ℕ, g0.inputs = [a, b] → ∀ p q : Fin 42, p ∈ Ls j0 a → q ∈ Ls j0 b →
           cen j0 = p ∨ cen j0 = q := by
         intro a b hin p q hp hq
@@ -490,7 +486,6 @@ theorem PEqualNP.Outside.R_meta_4328_79
           obtain ⟨p', hp', hpp'⟩ := Finset.exists_mem_ne ha2 p
           exact AF_B1b p p' (Ls j0 b) (Ne.symm hpp') hb2 (fun r hr => hadj a b hin p hp r hr)
             (fun r hr => hadj a b hin p' hp' r hr)
-      -- case analysis on the inputs
       rcases hin : g0.inputs with _ | ⟨a, _ | ⟨b, _ | ⟨c, rest⟩⟩⟩
       · rw [hin] at vu; simp [hEvAnd, hEvOr] at vu
       · rw [hin] at vz vu vv
